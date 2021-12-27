@@ -1,4 +1,3 @@
-# Python 3 server example
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from multiprocessing import Process
 import json
@@ -8,9 +7,6 @@ import psutil
 hostName = "localhost"
 serverPort = 8000
 file_name = 'temp.txt'
-
-
-# todo: reuse
 
 
 def write_to_temp_file(message):
@@ -39,12 +35,6 @@ class MyServer(BaseHTTPRequestHandler):
             self.send_header("Content-type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps(statistics).encode())
-
-            # self.wfile.write(bytes("<html>", "utf-8"))
-            # self.wfile.write(bytes("<body>", "utf-8"))
-            # self.wfile.write(
-            #     bytes("<p>This is an example web server.</p>", "utf-8"))
-            # self.wfile.write(bytes("</body></html>", "utf-8"))
 
     def do_POST(self):
         if self.path == "/messages":

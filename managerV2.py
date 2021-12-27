@@ -1,4 +1,3 @@
-# Python 3 server example
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import multiprocessing as mp
 import json
@@ -27,7 +26,7 @@ class MyServer(BaseHTTPRequestHandler):
     total_invocation = 0
 
     def __init__(self, request, client_address, server):
-        self.queue = server.queue  # save the queue here.
+        self.queue = server.queue
         BaseHTTPRequestHandler.__init__(self, request, client_address, server)
 
     def do_GET(self):

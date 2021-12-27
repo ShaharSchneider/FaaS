@@ -1,7 +1,6 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import multiprocessing as mp
 import json
-from queue import Empty
 import time
 import psutil
 

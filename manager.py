@@ -9,7 +9,6 @@ def faas(event):
     with open(event["file_name"], 'a') as file:
         message = event["message"]
         file.write(message + '\n')
-        file.flush()
 
 
 class Manager():
@@ -38,33 +37,33 @@ class Manager():
             "message": message
         }
 
+        self.queue.put(event)
         self.total_invocation += 1
 
         current_process = psutil.Process()
         children = current_process.children(recursive=True)
 
         if len(children) - 1 < self.queue.qsize():
-            process = mp.Process(target=self.process_handler, args=(event,))
+            process = mp.Process(
+                target=self.process_handler)
             process.start()
-        else:
-            self.queue.put(event)
+            print("proccess %d started" % process.pid)
 
-    def process_handler(self, event):
-        faas(event)
+    def process_handler(self):
+        if not self.queue.empty():
+            faas(self.queue.get())
 
         startTime = time.time()
         while(time.time() - startTime < 2):
+            time.sleep(0.1)
             if not self.queue.empty():
                 break
 
-        mp.Lock()
         if not self.queue.empty():
-            print(self.queue.qsize())
-            self.process_handler(self.queue.get())
-            mp.RLock()
+            self.process_handler()
         else:
-            mp.RLock()
             current_process = psutil.Process()
+            print("proccess %d killed" % current_process.pid)
             current_process.kill()
 
 

@@ -6,6 +6,7 @@ import psutil
 
 
 def faas(event):
+    time.sleep(5)
     with open(event["file_name"], 'a') as file:
         message = event["message"]
         file.write(message + '\n')
@@ -54,12 +55,14 @@ class Manager():
             faas(self.queue.get())
 
         startTime = time.time()
-        while(time.time() - startTime < 2):
+        # todo: blocking queue
+        while(time.time() - startTime < 10):
             time.sleep(0.1)
             if not self.queue.empty():
                 break
 
         if not self.queue.empty():
+            # todo:
             self.process_handler()
         else:
             current_process = psutil.Process()

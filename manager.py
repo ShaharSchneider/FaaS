@@ -4,80 +4,106 @@ import json
 import time
 import psutil
 
-hostName = "localhost"
-serverPort = 8000
-file_name = 'temp.txt'
+
+def faas(event):
+    with open(event["file_name"], 'a') as file:
+        message = event["message"]
+        file.write(message + '\n')
+        file.flush()
 
 
-def write_to_temp_file(queue):
-    with open(file_name, 'a') as file:
-        while 1:
-            time.sleep(5)
-            if queue.empty():
+class Manager():
+    def __init__(self, queue):
+        self.total_invocation = 0
+        self.file_name = 'temp.txt'
+        self.queue = queue
+
+    def get_stats(self, context):
+        current_process = psutil.Process()
+        children = current_process.children(recursive=True)
+
+        statistics = {
+            "active_instances": len(children) - 1,
+            "total_invocation": self.total_invocation
+        }
+
+        context.send_response(200)
+        context.send_header("Content-type", "application/json")
+        context.end_headers()
+        context.wfile.write(json.dumps(statistics).encode())
+
+    def post_message(self, message):
+        event = {
+            "file_name": self.file_name,
+            "message": message
+        }
+
+        self.total_invocation += 1
+
+        current_process = psutil.Process()
+        children = current_process.children(recursive=True)
+
+        if len(children) - 1 < self.queue.qsize():
+            process = mp.Process(target=self.process_handler, args=(event,))
+            process.start()
+        else:
+            self.queue.put(event)
+
+    def process_handler(self, event):
+        faas(event)
+
+        startTime = time.time()
+        while(time.time() - startTime < 2):
+            if not self.queue.empty():
                 break
-            message = queue.get()
-            file.write(message + '\n')
-            file.flush()
+
+        mp.Lock()
+        if not self.queue.empty():
+            print(self.queue.qsize())
+            self.process_handler(self.queue.get())
+            mp.RLock()
+        else:
+            mp.RLock()
+            current_process = psutil.Process()
+            current_process.kill()
 
 
-class MyServer(BaseHTTPRequestHandler):
-    global total_invocation
-    total_invocation = 0
-
-    def __init__(self, request, client_address, server):
-        self.queue = server.queue
-        BaseHTTPRequestHandler.__init__(self, request, client_address, server)
+class MyApiServer(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/statistics":
-            global total_invocation
-            current_process = psutil.Process()
-            children = current_process.children(recursive=True)
-
-            statistics = {
-                "active_instances": len(children) - 1,
-                "total_invocation": total_invocation
-            }
-
-            self.send_response(200)
-            self.send_header("Content-type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps(statistics).encode())
+            self.server.manager.get_stats(self)
 
     def do_POST(self):
         if self.path == "/messages":
-            global total_invocation
-            total_invocation += 1
-
             length = int(self.headers['content-length'])
             post_data = self.rfile.read(length)
             my_json = json.loads(post_data.decode('utf8').replace("'", '"'))
             message = my_json["message"]
-            self.queue.put(message)
-
-            if not self.queue.empty():
-                p = mp.Process(target=write_to_temp_file, args=(queue,))
-                p.start()
 
             self.send_response(200)
             self.wfile.write(
-                bytes("<html>", "utf-8"))
-            self.wfile.write(bytes("<body>", "utf-8"))
-            self.wfile.write(bytes(message, "utf-8"))
-            self.wfile.write(bytes("</body></html>", "utf-8"))
+                bytes("<html><body>%s</body></html>" % message, "utf-8"))
+
+            self.server.manager.post_message(message)
+
+
+class http_server:
+    hostName = "localhost"
+    serverPort = 8000
+
+    def __init__(self, manager):
+        server = HTTPServer((self.hostName, self.serverPort), MyApiServer)
+        server.manager = manager
+
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            pass
+
+        server.server_close()
 
 
 if __name__ == "__main__":
-    webServer = HTTPServer((hostName, serverPort), MyServer)
-    print("Server started http://%s:%s" % (hostName, serverPort))
-    manager = mp.Manager()
-    queue = manager.Queue()
-    webServer.queue = queue
-
-    try:
-        webServer.serve_forever()
-    except KeyboardInterrupt:
-        pass
-
-    webServer.server_close()
-    print("Server stopped.")
+    manager = Manager(mp.Manager().Queue())
+    server = http_server(manager)
